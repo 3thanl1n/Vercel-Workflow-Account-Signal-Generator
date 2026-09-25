@@ -1,0 +1,21 @@
+# Paste into api.slack.com/apps -> Create New App -> From manifest.
+# Interactivity (Approve/Skip buttons) is added Monday, pointing at
+# https://<prod-domain>/api/slack/actions
+display_information:
+  name: Signal Gen
+  description: Daily account usage signals with draft outreach, approved in Slack.
+  background_color: "#1f2937"
+features:
+  bot_user:
+    display_name: Signal Gen
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - chat:write.public
+      - users:read
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

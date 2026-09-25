@@ -9,9 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/workflow": "2.0.45",
+    "@neondatabase/serverless": "1.1.0",
+    "@vercel/sandbox": "3.5.0",
+    "ai": "7.0.114",
     "next": "16.3.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "workflow": "5.0.0-beta.56",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -22,5 +28,8 @@
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
