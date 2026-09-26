@@ -1,4 +1,5 @@
-import { deleteTokenCacheEntry, getConnectorMetadata, getTokenResponse } from "@vercel/connect";
+import { deleteTokenCacheEntry, getConnectorMetadata } from "@vercel/connect";
+import { connectToken } from "@/lib/connect";
 import { FatalError, RetryableError } from "workflow";
 import type { CrmAccount } from "@/lib/rules";
 
@@ -16,7 +17,7 @@ type Session = { accessToken: string; instanceUrl: string };
 export async function getSalesforceSession(): Promise<Session> {
   if (process.env.SALESFORCE_CLIENT_ID) return clientCredentialsSession();
 
-  const response = await getTokenResponse(SALESFORCE_CONNECTOR, CONNECT_PARAMS);
+  const response = await connectToken(SALESFORCE_CONNECTOR, CONNECT_PARAMS);
   const instanceUrl =
     pickUrl(response.metadata, ["instance_url", "instanceUrl"]) ??
     pickUrl(response.claims, ["instance_url", "instanceUrl"]) ??

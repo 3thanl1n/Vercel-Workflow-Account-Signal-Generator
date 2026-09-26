@@ -63,6 +63,18 @@ const latest = `v${versions.at(-1)!.version}`;
 console.log(`Connected to ${session.instanceUrl} as ${me.preferred_username} (org ${me.organization_id}).`);
 console.log(`API: using ${SF_API_VERSION}, org supports up to ${latest}.`);
 
+// Safety: this script adds fields and fake data, so only run it against a Developer Edition
+// org unless explicitly told otherwise.
+const [org] = await sfQuery<{ Name: string; OrganizationType: string; IsSandbox: boolean }>(
+  "SELECT Name, OrganizationType, IsSandbox FROM Organization",
+);
+console.log(`Org: ${org.Name} (${org.OrganizationType}${org.IsSandbox ? ", sandbox" : ""}).`);
+if (org.OrganizationType !== "Developer Edition" && !process.argv.includes("--allow-non-developer-org")) {
+  throw new Error(
+    `Refusing to seed a ${org.OrganizationType} org. Rerun with --allow-non-developer-org if this org is really a demo org.`,
+  );
+}
+
 // 2. Custom fields
 const existing = new Set(
   (await sfQuery<{ DeveloperName: string }>(`SELECT DeveloperName FROM CustomField WHERE TableEnumOrId = 'Account'`, true)).map(

@@ -1,6 +1,6 @@
-# Paste into api.slack.com/apps -> Create New App -> From manifest.
-# Interactivity (Approve/Skip buttons) is added Monday, pointing at
-# https://<prod-domain>/api/slack/actions
+# Fallback only. Signal Gen posts through the Slack app that Vercel Connect registered
+# (`vercel connect create slack`). If that path fails, paste this into api.slack.com/apps
+# -> Create New App -> From manifest, and add interactivity for /api/slack/actions.
 display_information:
   name: Signal Gen
   description: Daily account usage signals with draft outreach, approved in Slack.
