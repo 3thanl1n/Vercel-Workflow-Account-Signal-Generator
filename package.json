@@ -10,9 +10,11 @@
     "test": "vitest run",
     "db:setup": "tsx --env-file=.env.local scripts/db-setup.mts",
     "db:backfill": "tsx --env-file=.env.local scripts/usage-backfill.mts",
-    "sf:setup": "tsx --env-file=.env.local scripts/sf-setup.mts"
+    "sf:setup": "tsx --env-file=.env.local scripts/sf-setup.mts",
+    "email:demo": "tsx --env-file=.env.local scripts/draft-email-demo.mts"
   },
   "dependencies": {
+    "@ai-sdk/baseten": "2.1.35",
     "@ai-sdk/workflow": "2.0.45",
     "@neondatabase/serverless": "1.1.0",
     "@vercel/connect": "2.3.3",

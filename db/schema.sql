@@ -61,3 +61,8 @@ create table if not exists cron_days (
   day        date        primary key,
   claimed_at timestamptz not null default now()
 );
+
+-- Which model wrote each email draft, and its token counts (added 2026-09-26).
+alter table decisions add column if not exists email_model text;
+alter table decisions add column if not exists email_input_tokens integer;
+alter table decisions add column if not exists email_output_tokens integer;
