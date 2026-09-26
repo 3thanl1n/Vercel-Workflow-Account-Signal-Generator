@@ -6,11 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "db:setup": "tsx --env-file=.env.local scripts/db-setup.mts",
+    "db:backfill": "tsx --env-file=.env.local scripts/usage-backfill.mts",
+    "sf:setup": "tsx --env-file=.env.local scripts/sf-setup.mts"
   },
   "dependencies": {
     "@ai-sdk/workflow": "2.0.45",
     "@neondatabase/serverless": "1.1.0",
+    "@vercel/connect": "2.3.3",
     "@vercel/sandbox": "3.5.0",
     "ai": "7.0.114",
     "next": "16.3.6",
@@ -27,7 +32,9 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "4.23.15",
+    "typescript": "^5",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": "24.x"
