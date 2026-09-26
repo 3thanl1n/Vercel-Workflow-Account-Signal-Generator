@@ -43,3 +43,8 @@ next-env.d.ts
 # keep the template of variable names
 !.env.example
 /.swc
+
+# agent skills installed by marketplace integrations (local tooling, not app code)
+/.agents/
+/.claude/skills/
+skills-lock.json
