@@ -3,21 +3,29 @@ import { connectToken } from "@/lib/connect";
 import { FatalError, RetryableError } from "workflow";
 import type { CrmAccount } from "@/lib/rules";
 
-// Salesforce access. Default: a short-lived token from Vercel Connect, so no Salesforce
-// secret lives in env vars. Fallback: an External Client App's client-credentials flow,
-// used only when SALESFORCE_CLIENT_ID is set.
+// Salesforce access. Default: Vercel Connect's JWT bearer flow. Vercel signs an assertion
+// naming the integration user (SALESFORCE_USERNAME) with a key it keeps, and Salesforce
+// returns a short-lived token for that user. No one has to be logged in (the daily cron),
+// and no Salesforce secret lives in env vars. The user must be pre-authorized on the
+// External Client App in Salesforce Setup.
+// Fallback: an External Client App's client-credentials flow, used only when
+// SALESFORCE_CLIENT_ID is set.
 
 export const SALESFORCE_CONNECTOR = process.env.SALESFORCE_CONNECTOR ?? "salesforce/signal-gen-sf";
 export const SF_API_VERSION = "v66.0";
 
-const CONNECT_PARAMS = { subject: { type: "app" as const } };
+function connectParams() {
+  const username = process.env.SALESFORCE_USERNAME;
+  if (!username) throw new FatalError("SALESFORCE_USERNAME is not set (the Salesforce user the integration runs as).");
+  return { subject: { type: "jwt-bearer" as const, sub: username } };
+}
 
 type Session = { accessToken: string; instanceUrl: string };
 
 export async function getSalesforceSession(): Promise<Session> {
   if (process.env.SALESFORCE_CLIENT_ID) return clientCredentialsSession();
 
-  const response = await connectToken(SALESFORCE_CONNECTOR, CONNECT_PARAMS);
+  const response = await connectToken(SALESFORCE_CONNECTOR, connectParams());
   const instanceUrl =
     pickUrl(response.metadata, ["instance_url", "instanceUrl"]) ??
     pickUrl(response.claims, ["instance_url", "instanceUrl"]) ??
@@ -67,7 +75,7 @@ export async function sfFetch<T = unknown>(path: string, init: RequestInit = {})
 
     if (res.status === 401 && attempt === 1 && !process.env.SALESFORCE_CLIENT_ID) {
       // Token revoked or expired early: drop the cached one and try once more.
-      deleteTokenCacheEntry(SALESFORCE_CONNECTOR, CONNECT_PARAMS);
+      deleteTokenCacheEntry(SALESFORCE_CONNECTOR, connectParams());
       continue;
     }
     if (res.status === 204) return undefined as T;
