@@ -58,7 +58,10 @@ export function usageJump(u: UsageSummary): Signal | null {
     kind: "usage_jump",
     play: "expand",
     dollarsPerYear: (now - before) * WEEKS_PER_YEAR,
-    detail: `Weekly spend ${usd(before)} to ${usd(now)} (${ratio(now, before)})`,
+    detail:
+      `Usage jump: ${money(before).text} → ${money(now).text} a week ` +
+      `(${ratio(now, before, money(now).value, money(before).value)}; fires at 1.5x+ with $1k+ this week) → ` +
+      `${weeklyChange("+", before, now)} × 52 ${yearly(now - before)}/yr`,
   };
 }
 
@@ -70,7 +73,10 @@ export function usageDrop(u: UsageSummary): Signal | null {
     kind: "usage_drop",
     play: "save",
     dollarsPerYear: (before - now) * WEEKS_PER_YEAR,
-    detail: `Weekly spend ${usd(before)} to ${usd(now)} (${ratio(now, before)})`,
+    detail:
+      `Usage drop: ${money(before).text} → ${money(now).text} a week ` +
+      `(${ratio(now, before, money(now).value, money(before).value)}; fires at 0.7x or less with $1k+ last week) → ` +
+      `${weeklyChange("−", now, before)} × 52 ${yearly(before - now)}/yr at risk`,
   };
 }
 
@@ -82,7 +88,11 @@ export function commitPace(u: UsageSummary, crm: CrmAccount): Signal | null {
     kind: "commit_pace",
     play: "expand",
     dollarsPerYear: annualized - crm.committedSpend,
-    detail: `On pace for ${usd(annualized)}/yr against a ${usd(crm.committedSpend)} commit${crm.renewalDate ? `, renews ${crm.renewalDate}` : ""}`,
+    detail:
+      `Commit pace: ${money(u.thisWeek.spend).text}/wk × 52 ${yearly(u.thisWeek.spend, annualized)}/yr ` +
+      `vs a ${money(crm.committedSpend).text} commit ` +
+      `(${ratio(annualized, crm.committedSpend, money(annualized).value, money(crm.committedSpend).value)}; fires at 1.2x+) → ` +
+      `${difference(annualized, crm.committedSpend)}/yr over commit`,
   };
 }
 
@@ -93,7 +103,9 @@ export function newModels(u: UsageSummary): Signal[] {
       kind: "new_model" as const,
       play: "new_use_case" as const,
       dollarsPerYear: m.spendThisWeek * WEEKS_PER_YEAR,
-      detail: `New model ${m.model}: ${usd(m.spendThisWeek)} this week, unused in the 21 days before`,
+      detail:
+        `New model: ${m.model}, ${money(m.spendThisWeek).text} this week, unused the 21 days before ` +
+        `(fires at $500+) → × 52 ${yearly(m.spendThisWeek)}/yr`,
     }));
 }
 
@@ -105,7 +117,9 @@ export function errorSpike(u: UsageSummary): Signal | null {
     kind: "error_spike",
     play: null,
     dollarsPerYear: null,
-    detail: `Error rate ${pct(before)} to ${pct(now)} week over week`,
+    detail:
+      `Error spike: ${percent(before).text} → ${percent(now).text} of requests failed ` +
+      `(${ratio(now, before, percent(now).value, percent(before).value)}; fires at 2x+ and 2%+) · context only, no $ value`,
   };
 }
 
@@ -173,16 +187,66 @@ function rate(errors: number, requests: number): number {
   return requests > 0 ? errors / requests : 0;
 }
 
-export function usd(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
-  return `$${Math.round(value)}`;
+// Display helpers. Each line should let a reader redo the math from the numbers shown,
+// so every rounded number carries the value a reader would take from it, and a step
+// uses "≈" instead of "=" (or a leading "≈") when the shown numbers don't work out exactly.
+
+type Shown = { text: string; value: number };
+
+/** Dollars to 3 significant figures: $840, $7.00k, $23.6k, $645k, $1.91M. Always unsigned. */
+export function money(amount: number): Shown {
+  const abs = Math.abs(amount);
+  if (abs >= 999_500) {
+    const m = Math.round(abs / 10_000) / 100;
+    return { text: `$${m.toFixed(2)}M`, value: m * 1_000_000 };
+  }
+  if (abs >= 99_950) {
+    const k = Math.round(abs / 1_000);
+    return { text: `$${k}k`, value: k * 1_000 };
+  }
+  if (abs >= 9_995) {
+    const k = Math.round(abs / 100) / 10;
+    return { text: `$${k.toFixed(1)}k`, value: k * 1_000 };
+  }
+  if (abs >= 999.5) {
+    const k = Math.round(abs / 10) / 100;
+    return { text: `$${k.toFixed(2)}k`, value: k * 1_000 };
+  }
+  return { text: `$${Math.round(abs)}`, value: Math.round(abs) };
 }
 
-function ratio(now: number, before: number): string {
-  return before > 0 ? `${(now / before).toFixed(2)}x` : "new";
+/** A rate as a percentage with 2 decimals: 0.24%, 3.47%. */
+function percent(rate: number): Shown {
+  const p = Math.round(rate * 10_000) / 100;
+  return { text: `${p.toFixed(2)}%`, value: p / 100 };
 }
 
-function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+function same(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.005;
+}
+
+/** "1.53x" from the real values; "≈" when dividing the shown values gives a different figure. */
+function ratio(a: number, b: number, shownA: number, shownB: number): string {
+  if (b <= 0) return "new";
+  const digits = a / b >= 10 ? 1 : 2;
+  const text = (a / b).toFixed(digits);
+  return `${text === (shownA / shownB).toFixed(digits) ? "" : "≈"}${text}x`;
+}
+
+/** "+$12.4k/wk": the weekly change, "≈" first when it isn't the difference of the shown numbers. */
+function weeklyChange(sign: "+" | "−", smaller: number, larger: number): string {
+  const change = money(larger - smaller);
+  const exact = same(money(larger).value - money(smaller).value, change.value);
+  return `${exact ? "" : "≈"}${sign}${change.text}/wk`;
+}
+
+/** "= $104k" or "≈ $645k": a weekly amount times 52, compared with the shown weekly amount x 52. */
+function yearly(weekly: number, annual = weekly * WEEKS_PER_YEAR): string {
+  return `${same(money(weekly).value * WEEKS_PER_YEAR, money(annual).value) ? "=" : "≈"} ${money(annual).text}`;
+}
+
+/** "$1.91M" for a - b, with "≈" first when it isn't the difference of the shown numbers. */
+function difference(a: number, b: number): string {
+  const diff = money(a - b);
+  return `${same(money(a).value - money(b).value, diff.value) ? "" : "≈"}${diff.text}`;
 }

@@ -32,6 +32,16 @@ describe("usage jump", () => {
     expect(usageJump(usage({ now: 1_490, before: 1_000 }))).toBeNull();
     expect(usageJump(usage({ now: 999, before: 300 }))).toBeNull();
   });
+
+  it("explains its math, with ≈ where the shown numbers don't work out exactly", () => {
+    expect(usageJump(usage({ now: 36_000, before: 23_600 }))?.detail).toBe(
+      "Usage jump: $23.6k → $36.0k a week (1.53x; fires at 1.5x+ with $1k+ this week) → +$12.4k/wk × 52 ≈ $645k/yr",
+    );
+    // $36.1k - $23.6k shows as $12.5k, but the real change is $12.4k.
+    expect(usageJump(usage({ now: 36_060, before: 23_640 }))?.detail).toBe(
+      "Usage jump: $23.6k → $36.1k a week (1.53x; fires at 1.5x+ with $1k+ this week) → ≈+$12.4k/wk × 52 ≈ $646k/yr",
+    );
+  });
 });
 
 describe("usage drop", () => {
@@ -39,6 +49,9 @@ describe("usage drop", () => {
     expect(usageDrop(usage({ now: 700, before: 1_000 }))).toMatchObject({ play: "save", dollarsPerYear: 15_600 });
     expect(usageDrop(usage({ now: 710, before: 1_000 }))).toBeNull();
     expect(usageDrop(usage({ now: 100, before: 999 }))).toBeNull();
+    expect(usageDrop(usage({ now: 7_000, before: 10_300 }))?.detail).toBe(
+      "Usage drop: $10.3k → $7.00k a week (0.68x; fires at 0.7x or less with $1k+ last week) → −$3.30k/wk × 52 ≈ $172k/yr at risk",
+    );
   });
 });
 
@@ -48,6 +61,9 @@ describe("commit pace", () => {
     expect(commitPace(usage({ now: 12_000 }), committed)).toMatchObject({ play: "expand", dollarsPerYear: 104_000 });
     expect(commitPace(usage({ now: 11_900 }), committed)).toBeNull();
     expect(commitPace(usage({ now: 12_000 }), crm({ plan: "Pay as you go", committedSpend: 520_000 }))).toBeNull();
+    expect(commitPace(usage({ now: 92_900 }), crm({ plan: "Committed", committedSpend: 2_920_000 }))?.detail).toBe(
+      "Commit pace: $92.9k/wk × 52 ≈ $4.83M/yr vs a $2.92M commit (1.65x; fires at 1.2x+) → $1.91M/yr over commit",
+    );
   });
 });
 
@@ -57,6 +73,10 @@ describe("new model", () => {
       { play: "new_use_case", dollarsPerYear: 26_000 },
     ]);
     expect(newModels(usage({ newModels: [{ model: "flux-1-dev", spendThisWeek: 499.99 }] }))).toEqual([]);
+    // $2.00k x 52 is exactly the $104k shown, so "=".
+    expect(newModels(usage({ newModels: [{ model: "flux-1-dev", spendThisWeek: 2_000 }] }))[0].detail).toBe(
+      "New model: flux-1-dev, $2.00k this week, unused the 21 days before (fires at $500+) → × 52 = $104k/yr",
+    );
   });
 });
 
@@ -65,6 +85,9 @@ describe("error spike", () => {
     expect(errorSpike(usage({ nowRate: 0.02, beforeRate: 0.01 }))).toMatchObject({ play: null, dollarsPerYear: null });
     expect(errorSpike(usage({ nowRate: 0.015, beforeRate: 0.005 }))).toBeNull();
     expect(errorSpike(usage({ nowRate: 0.03, beforeRate: 0.02 }))).toBeNull();
+    expect(errorSpike(usage({ nowRate: 0.0347, beforeRate: 0.0024 }))?.detail).toBe(
+      "Error spike: 0.24% → 3.47% of requests failed (14.5x; fires at 2x+ and 2%+) · context only, no $ value",
+    );
   });
 });
 
