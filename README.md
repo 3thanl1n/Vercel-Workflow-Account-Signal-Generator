@@ -1,23 +1,47 @@
 # Signal Gen
 
-A daily durable workflow on Vercel that compares each account's product usage with its Salesforce record, scores every account in plain code, has a Claude agent investigate the top movers (running analysis code in a Vercel Sandbox), and posts Slack alerts with a draft email. Approving an alert logs a follow-up task in Salesforce.
+A daily durable workflow on Vercel that compares each account's product usage with its Salesforce record, flags accounts with plain if-then rules, ranks them by dollars at stake, has a Claude agent investigate the top movers (running analysis code in a Vercel Sandbox), and posts Slack alerts with a draft email. Approving an alert logs a follow-up task in Salesforce.
 
-Side project with dummy data (a Salesforce Developer Edition org plus generated usage data).
+Side project with dummy data: a Salesforce trial org seeded with 25 fictional AI companies, plus generated usage data.
 
-**Status:** Day 1, skeleton. A hello-world workflow proves durable steps, a durable sleep, Postgres (Neon) and Vercel Sandbox work together.
+**Status:** the daily run is live (cron at 12:00 UTC). It generates the day's usage, loads Salesforce and 28 days of usage, ranks every account, posts a plain Slack summary of the top 5, and logs the run to Postgres. The agent comes next.
 
 ## Stack
-Next.js 16, Workflow SDK 5 (beta), AI SDK 7, Vercel Sandbox, Neon Postgres, Vercel Connect (Salesforce), Slack.
+Next.js 16, Workflow SDK 5 (beta), AI SDK 7, Vercel Sandbox, Neon Postgres, Vercel Connect (Salesforce and Slack), Vercel Cron.
+
+## How the daily run works
+`src/workflows/daily-signals.ts`. Each step retries on its own and saves its result, so a crash or redeploy resumes where it left off.
+
+1. **Generate usage.** Fills any missing day in the last 30. Rows are deterministic, so reruns add nothing.
+2. **Load Salesforce.** Accounts, plan, commit, renewal date and open opportunities.
+3. **Load usage.** 28 days of rows, summarized per account inside the step so the step result stays small.
+4. **Prioritize.** The rules in `src/lib/rules.ts`: usage jump, usage drop, commit pace, new model (all in dollars per year), and error spike (context only). The priority is the largest dollar value, not the sum.
+5. **Post the Slack summary.** It checks the run log first, so a retry never posts twice.
+6. **Log the run** in the `runs` table. A failed run is logged as `failed`, with the error.
+
+## Credentials
+No Salesforce or Slack secret is stored in env vars. Vercel Connect issues short-lived tokens at call time:
+- **Salesforce:** the OAuth 2.0 JWT bearer flow. Vercel signs an assertion for a pre-authorized integration user (`SALESFORCE_USERNAME`), so the cron works with no one logged in.
+- **Slack:** a Slack app that Vercel Connect registered in the workspace.
+- **Postgres, Sandbox and AI Gateway:** credentials come from Vercel (the Neon integration and OIDC).
 
 ## Run locally
 ```bash
 npm install
-vercel link && vercel env pull   # OIDC token + DATABASE_URL into .env.local
+vercel link && vercel env pull     # OIDC token, DATABASE_URL, secrets into .env.local
+npm run db:setup                   # create tables (safe to rerun)
+npm run db:backfill                # 30 days of usage (safe to rerun)
+npm run sf:setup -- --allow-non-developer-org   # Salesforce fields and seed data (safe to rerun)
+npm test                           # rules, week windows, planted stories
 npm run dev
-curl -X POST localhost:3000/api/run-now -H "Authorization: Bearer $RUN_NOW_SECRET"
-npx workflow web                  # inspect runs and steps
+curl -X POST localhost:3000/api/run-now -H "Authorization: Bearer $RUN_NOW_SECRET"          # today
+curl -X POST localhost:3000/api/run-now -H "Authorization: Bearer $RUN_NOW_SECRET" -d '{"day":"2026-09-20"}'
+npx workflow web                   # inspect runs and steps
 ```
 
 ## Known limits
-- Workflow SDK 5 is a beta (required by `@ai-sdk/workflow` for `WorkflowAgent`); versions are pinned exactly.
-- `npm audit` flags an old `nanoid` bundled inside the Workflow beta's `@workflow/core`; the suggested `--force` fix would downgrade Workflow.
+- The thresholds are guesses, and we planted the stories the rules find. This proves the plumbing, not predictive power.
+- The Salesforce org is a 30-day Enterprise Edition trial that expires on 2026-10-26.
+- Workflow SDK 5 is a beta (required by `@ai-sdk/workflow` for `WorkflowAgent`), so versions are pinned exactly.
+- `npm audit` flags an old `nanoid` bundled inside the Workflow beta's `@workflow/core`. The suggested `--force` fix would downgrade Workflow.
+- Hobby cron fires once a day, anytime within the scheduled hour.

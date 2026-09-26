@@ -1,5 +1,5 @@
-// Sets up the Salesforce Developer Edition org for Signal Gen. Safe to rerun:
-//  1. creates the 4 custom Account fields if missing (Tooling API)
+// Sets up the Salesforce demo org for Signal Gen. Safe to rerun:
+//  1. creates the custom Account and Contact fields if missing (Tooling API)
 //  2. grants your profile read/edit on them (new fields are hidden from the API otherwise)
 //  3. upserts ~25 fictional accounts by Usage_Account_Key__c (external ID)
 //  4. creates or updates their contacts (matched by email) and open opportunities (matched by name)
@@ -30,7 +30,11 @@ const FIELDS = [
     FullName: "Account.Usage_Account_Key__c",
     Metadata: { label: "Usage Account Key", type: "Text", length: 64, externalId: true, unique: true, caseSensitive: false, description: NOTE },
   },
+  // The email draft goes to the primary contact.
+  { FullName: "Contact.Primary_Contact__c", Metadata: { label: "Primary Contact", type: "Checkbox", defaultValue: "false", description: NOTE } },
 ];
+
+const objectOf = (fullName: string) => fullName.split(".")[0];
 
 type SaveResult = { id: string; success: boolean; created?: boolean; errors: { message: string }[] };
 
@@ -76,10 +80,14 @@ if (org.OrganizationType !== "Developer Edition" && !process.argv.includes("--al
 }
 
 // 2. Custom fields
+const objects = [...new Set(FIELDS.map((f) => objectOf(f.FullName)))];
 const existing = new Set(
-  (await sfQuery<{ DeveloperName: string }>(`SELECT DeveloperName FROM CustomField WHERE TableEnumOrId = 'Account'`, true)).map(
-    (f) => `Account.${f.DeveloperName}__c`,
-  ),
+  (
+    await sfQuery<{ DeveloperName: string; TableEnumOrId: string }>(
+      `SELECT DeveloperName, TableEnumOrId FROM CustomField WHERE TableEnumOrId IN (${objects.map(quote).join(", ")})`,
+      true,
+    )
+  ).map((f) => `${f.TableEnumOrId}.${f.DeveloperName}__c`),
 );
 for (const field of FIELDS) {
   if (existing.has(field.FullName)) continue;
@@ -96,8 +104,7 @@ const [permissionSet] = await sfQuery<{ Id: string }>(
 );
 const grants = await sfQuery<{ Id: string; Field: string; PermissionsRead: boolean; PermissionsEdit: boolean }>(
   `SELECT Id, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions
-   WHERE ParentId = ${quote(permissionSet.Id)} AND SobjectType = 'Account'
-   AND Field IN (${FIELDS.map((f) => quote(f.FullName)).join(", ")})`,
+   WHERE ParentId = ${quote(permissionSet.Id)} AND Field IN (${FIELDS.map((f) => quote(f.FullName)).join(", ")})`,
 );
 const fieldAccess = await saveCollection(
   "FieldPermissions",
@@ -107,7 +114,13 @@ const fieldAccess = await saveCollection(
         ? grant.PermissionsRead && grant.PermissionsEdit
           ? null
           : { Id: grant.Id, PermissionsRead: true, PermissionsEdit: true }
-        : { ParentId: permissionSet.Id, SobjectType: "Account", Field: FIELDS[i].FullName, PermissionsRead: true, PermissionsEdit: true },
+        : {
+            ParentId: permissionSet.Id,
+            SobjectType: objectOf(FIELDS[i].FullName),
+            Field: FIELDS[i].FullName,
+            PermissionsRead: true,
+            PermissionsEdit: true,
+          },
     )
     .filter((r): r is NonNullable<typeof r> => r !== null),
 );
@@ -152,7 +165,7 @@ const contacts = await saveCollection(
         LastName: c.lastName,
         Title: c.title,
         Email: email,
-        Description: i === 0 ? "Primary contact" : null,
+        Primary_Contact__c: i === 0,
       };
     }),
   ),
