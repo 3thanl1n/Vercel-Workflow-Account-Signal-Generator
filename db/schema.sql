@@ -66,3 +66,17 @@ create table if not exists cron_days (
 alter table decisions add column if not exists email_model text;
 alter table decisions add column if not exists email_input_tokens integer;
 alter table decisions add column if not exists email_output_tokens integer;
+
+-- The agent's token usage per decision, for cost (added 2026-09-27).
+alter table decisions add column if not exists agent_model text;
+alter table decisions add column if not exists agent_input_tokens integer;
+alter table decisions add column if not exists agent_output_tokens integer;
+alter table decisions add column if not exists agent_cache_read_tokens integer;
+alter table decisions add column if not exists agent_cache_write_tokens integer;
+
+-- How many top accounts the agent decided on, and how many failed or timed out (added 2026-09-27).
+alter table runs add column if not exists accounts_decided integer;
+alter table runs add column if not exists accounts_failed integer;
+
+-- The exact digest text that was posted (added 2026-09-27).
+alter table runs add column if not exists digest text;

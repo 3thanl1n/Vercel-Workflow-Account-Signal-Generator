@@ -20,7 +20,7 @@ Next.js 16, Workflow SDK 5 (beta), AI SDK 7, Vercel Sandbox, Neon Postgres, Verc
 6. **Log the run** in the `runs` table. A failed run is logged as `failed`, with the error.
 
 ## Why two models
-Claude does the account analysis: hard reasoning with tools, where quality matters most. An open model on Baseten (GLM 5.3 Flash) writes the follow-up emails: a simple, repeated writing job where a small model is cheaper and faster, at about $0.15/$0.50 per 1M input/output tokens vs $4/$20 for Claude Opus 5.5. Every draft is checked (subject 80 characters or less, body 150 words or less, at least one number). A draft that fails the check, or a Baseten call that fails after its retries, falls back to Claude; if both fail, the alert goes out without a draft. See `src/lib/email-draft.ts`.
+Claude does the account analysis: hard reasoning with tools, where quality matters most. An open model on Baseten (GLM 5.3 Flash) writes the follow-up emails: a simple, repeated writing job where a small model is cheaper and faster, at about $0.15/$0.50 per 1M input/output tokens vs $2/$10 for Claude Sonnet 5 (the plan was Opus 5.5 at $4/$20, but it's gated on this account; the model is one constant in `src/lib/models.ts`). Every draft is checked (subject 80 characters or less, body 150 words or less, at least one number). A draft that fails the check, or a Baseten call that fails after its retries, falls back to Claude; if both fail, the alert goes out without a draft. See `src/lib/email-draft.ts`.
 
 ## Credentials
 No Salesforce or Slack secret is stored in env vars. Vercel Connect issues short-lived tokens at call time:

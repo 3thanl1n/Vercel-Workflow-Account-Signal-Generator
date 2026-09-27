@@ -78,3 +78,50 @@ describe("formatSummary", () => {
     ]);
   });
 });
+
+describe("formatSummary with the agent's take", () => {
+  const ranking = rankAccounts(
+    ["a", "b", "c", "d", "e"].map((key) => crm(key, key.toUpperCase())),
+    ["a", "b", "c", "d", "e"].map((key, i) => usage(key, 3_000 + i * 100, 1_000)),
+  );
+  const why = ["Weekly spend up 3x ($1.00k to $3.40k)", "No open opportunity"];
+  const decided = (play: "expand" | "ignore", email: { subject: string; body: string; model: string } | null) => ({
+    status: "decided" as const,
+    decision: { play, confidence: 0.8, why, nextStep: "Call them this week." },
+    email,
+    agentUsage: { model: "anthropic/claude-opus-5.5", inputTokens: 1, outputTokens: 1 },
+    emailUsage: null,
+  });
+  const text = formatSummary("2026-09-27", ranking, {
+    e: decided("expand", { subject: "Room to grow", body: "Hi Pat,\nUsage tripled.", model: "zai-org/GLM-5.3-Flash" }),
+    d: decided("ignore", null),
+    c: decided("expand", null),
+    b: { status: "failed", error: "Salesforce 503" },
+    a: { status: "timed_out" },
+  });
+
+  it("keeps each account's rule lines and puts the agent's take, email and model under them", () => {
+    const lines = text.split("\n");
+    const start = lines.indexOf("1. *E* · Expand · $125k/yr at stake");
+    expect(lines.slice(start + 2, start + 10)).toEqual([
+      "      Owner: Ethan Lin · Renewal: none (pay as you go) · Open opportunity: no",
+      "      *Agent:* Expand · confidence 0.80",
+      "         – Weekly spend up 3x ($1.00k to $3.40k)",
+      "         – No open opportunity",
+      "         Next step: Call them this week.",
+      "      *Email:* Room to grow",
+      "> Hi Pat,",
+      "> Usage tripled.",
+    ]);
+    expect(lines[start + 10]).toBe("      _Draft: GLM 5.3 Flash on Baseten_");
+  });
+
+  it("says so when the agent ignores, has no draft, fails or times out", () => {
+    expect(text).toContain("      *Agent:* Ignore · confidence 0.80");
+    expect(text).toContain("      *Email:* no draft (both models failed)");
+    expect(text).toContain("      *Agent:* failed (Salesforce 503); the rule lines above still stand.");
+    expect(text).toContain("      *Agent:* no answer within 30 minutes; the rule lines above still stand.");
+    // Every top account still shows its rule line.
+    expect(text.match(/• Usage jump:/g)).toHaveLength(5);
+  });
+});

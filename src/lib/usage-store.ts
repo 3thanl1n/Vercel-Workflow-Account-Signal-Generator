@@ -42,3 +42,15 @@ export async function loadUsageRows(fromDay: string, toDay: string): Promise<Usa
     spendUsd: r.spend_usd,
   }));
 }
+
+/** One account's daily usage as CSV, the only data the agent's sandboxed Python can see. */
+export async function loadAccountUsageCsv(accountKey: string, fromDay: string, toDay: string): Promise<string> {
+  const sql = getSql();
+  const rows = await sql`
+    select day::text as day, model, requests, gpu_hours::float8 as gpu_hours, errors, p95_latency_ms, spend_usd::float8 as spend_usd
+    from usage_daily
+    where account_key = ${accountKey} and day between ${fromDay}::date and ${toDay}::date
+    order by day, model`;
+  const header = "day,model,requests,gpu_hours,errors,p95_latency_ms,spend_usd";
+  return [header, ...rows.map((r) => [r.day, r.model, r.requests, r.gpu_hours, r.errors, r.p95_latency_ms, r.spend_usd].join(","))].join("\n");
+}

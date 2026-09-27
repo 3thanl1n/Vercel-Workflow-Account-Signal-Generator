@@ -1,21 +1,16 @@
 import { baseten } from "@ai-sdk/baseten";
-import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from "ai";
+import { generateText, LoadAPIKeyError, NoObjectGeneratedError, Output, type LanguageModel } from "ai";
 import { FatalError } from "workflow";
 import { z } from "zod";
+import { CLAUDE_MODEL as CLAUDE, costUsd, GLM_FLASH } from "@/lib/models";
 
 // Two models, two jobs. Claude does the account analysis (hard reasoning with tools);
 // an open model on Baseten writes the follow-up email, a short, repeated writing job
 // where a small fast model is cheaper and quicker. Claude drafts only if Baseten fails.
 
-export const BASETEN_MODEL = "zai-org/GLM-5.3-Flash";
-export const CLAUDE_MODEL = "anthropic/claude-opus-5.5";
+export const BASETEN_MODEL = GLM_FLASH;
+export const CLAUDE_MODEL = CLAUDE;
 const BASETEN_TIMEOUT_MS = 30_000;
-
-/** List prices in USD per 1M tokens (Baseten and AI Gateway, checked 2026-09-26). */
-export const PRICES_PER_M_TOKENS: Record<string, { input: number; output: number }> = {
-  [BASETEN_MODEL]: { input: 0.15, output: 0.5 },
-  [CLAUDE_MODEL]: { input: 4, output: 20 },
-};
 
 export type EmailDraftInput = {
   accountName: string;
@@ -61,7 +56,8 @@ Rules:
 - Mention at least one concrete number from the facts you're given, framed as something useful to the customer.
 - Never mention internal scores, rules, signals, or that this email was generated.
 - Fit the play: expand = help them grow (capacity, committed pricing); save = check in on reliability and offer help; new_use_case = ask about the new workload and offer support.
-- End with one clear ask, such as a short call. No signature block and no placeholders.
+- End with one clear ask, such as a short call, and stop there: no sign-off, no name, no signature. The account owner adds their own.
+- No placeholders such as [Name].
 Return JSON with "subject" and "body".`;
 
 function formatInput(input: EmailDraftInput): string {
@@ -73,6 +69,25 @@ function formatInput(input: EmailDraftInput): string {
     ...input.why.map((line) => `- ${line}`),
     `Next step: ${input.nextStep}`,
   ].join("\n");
+}
+
+// A line that is only a closing ("Best,", "Thanks!", "Kind regards") or an em-dash name ("— Maya").
+const SIGN_OFF =
+  /^(best|best regards|kind regards|warm regards|regards|warmly|thanks|thanks again|thank you|many thanks|cheers|sincerely|all the best|talk soon)[\s,.!]*$/i;
+const DASH_NAME = /^[—–]\s*[A-Z][\w .'-]{0,40}$/;
+
+/**
+ * Removes a trailing sign-off and everything after it ("Best,\nMaya"), even if the model
+ * ignores the prompt, so a made-up sender never reaches a rep. Only the last 4 lines are
+ * checked, so a "thanks" earlier in the email is left alone.
+ */
+export function stripSignOff(body: string): string {
+  const lines = body.trimEnd().split("\n");
+  for (let i = Math.max(0, lines.length - 4); i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (SIGN_OFF.test(line) || DASH_NAME.test(line)) return lines.slice(0, i).join("\n").trimEnd();
+  }
+  return body.trimEnd();
 }
 
 export function wordCount(text: string): number {
@@ -92,13 +107,14 @@ async function draft(model: LanguageModel, modelId: string, input: EmailDraftInp
       timeout,
     });
   } catch (error) {
+    if (LoadAPIKeyError.isInstance(error)) throw new FatalError(`${modelId}: API key is not set`);
     if (NoObjectGeneratedError.isInstance(error)) {
       throw new DraftCheckError(modelId, ["reply wasn't a JSON object with a subject and body"]);
     }
     throw error;
   }
 
-  const checked = DraftCheck.safeParse(result.output);
+  const checked = DraftCheck.safeParse({ ...result.output, body: stripSignOff(result.output.body) });
   if (!checked.success) throw new DraftCheckError(modelId, checked.error.issues.map((issue) => issue.message));
   return {
     ...checked.data,
@@ -147,6 +163,5 @@ export function draftLabel(model: string): string {
 }
 
 export function draftCostUsd(draft: Pick<EmailDraft, "model" | "inputTokens" | "outputTokens">): number | null {
-  const price = PRICES_PER_M_TOKENS[draft.model];
-  return price ? (draft.inputTokens * price.input + draft.outputTokens * price.output) / 1_000_000 : null;
+  return costUsd(draft.model, draft);
 }

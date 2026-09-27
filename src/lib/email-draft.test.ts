@@ -11,6 +11,7 @@ import {
   draftWithBaseten,
   draftWithClaude,
   type EmailDraftInput,
+  stripSignOff,
 } from "./email-draft";
 
 const INPUT: EmailDraftInput = {
@@ -98,6 +99,24 @@ describe("email drafts", () => {
     });
     expect(neither).toMatchObject({ draft: null });
     expect(neither.failures).toHaveLength(2);
+  });
+
+  it("strips a sign-off and made-up sender, but never the actual ask", () => {
+    const ask = "Hi Aiden,\n\nUsage grew 62% last week.\n\nWorth a 20-minute call this week?";
+    expect(stripSignOff(`${ask}\n\nBest,\nMaya`)).toBe(ask);
+    expect(stripSignOff(`${ask}\n\nKind regards,\nMaya Okafor\nAccount Executive`)).toBe(ask);
+    expect(stripSignOff(`${ask}\n\nThanks!`)).toBe(ask);
+    expect(stripSignOff(`${ask}\n— Maya`)).toBe(ask);
+    // A short closing line without punctuation is the ask, not a signature.
+    expect(stripSignOff("Hi Aiden,\n\nUsage grew 62%.\n\nWorth a call this week")).toBe("Hi Aiden,\n\nUsage grew 62%.\n\nWorth a call this week");
+    expect(stripSignOff("Thanks for the quick reply on the 3 regions.\n\nCan we talk Tuesday?")).toBe(
+      "Thanks for the quick reply on the 3 regions.\n\nCan we talk Tuesday?",
+    );
+  });
+
+  it("removes the sign-off before the checks, so the rep never sees it", async () => {
+    const signed = { ...GOOD, body: `${GOOD.body}\n\nBest,\nMaya` };
+    await expect(draftWithBaseten(INPUT, model(JSON.stringify(signed)))).resolves.toMatchObject({ body: GOOD.body });
   });
 
   it("labels and prices each draft by model", () => {

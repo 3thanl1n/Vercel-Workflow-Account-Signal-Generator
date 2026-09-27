@@ -131,3 +131,51 @@ export async function loadCrmAccounts(): Promise<CrmAccount[]> {
     hasOpenOpportunity: (r.Opportunities?.totalSize ?? 0) > 0,
   }));
 }
+
+export type AccountDetails = {
+  name: string;
+  owner: string | null;
+  plan: string | null;
+  committedSpend: number | null;
+  renewalDate: string | null;
+  description: string | null;
+  contacts: { name: string; title: string | null; email: string | null; primary: boolean }[];
+  openOpportunities: { name: string; stage: string; amount: number | null; closeDate: string }[];
+};
+
+type AccountDetailRecord = {
+  Name: string;
+  Owner: { Name: string } | null;
+  Plan__c: string | null;
+  Committed_Spend__c: number | null;
+  Renewal_Date__c: string | null;
+  Description: string | null;
+  Contacts: { records: { Name: string; Title: string | null; Email: string | null; Primary_Contact__c: boolean }[] } | null;
+  Opportunities: { records: { Name: string; StageName: string; Amount: number | null; CloseDate: string }[] } | null;
+};
+
+/** One account's CRM picture for the agent (read-only). The primary contact comes first. */
+export async function loadAccountDetails(accountKey: string): Promise<AccountDetails> {
+  const [r] = await sfQuery<AccountDetailRecord>(
+    `SELECT Name, Owner.Name, Plan__c, Committed_Spend__c, Renewal_Date__c, Description,
+       (SELECT Name, Title, Email, Primary_Contact__c FROM Contacts ORDER BY Primary_Contact__c DESC, Name),
+       (SELECT Name, StageName, Amount, CloseDate FROM Opportunities WHERE IsClosed = false)
+     FROM Account WHERE Usage_Account_Key__c = '${accountKey.replace(/[^\w-]/g, "")}'`,
+  );
+  if (!r) throw new FatalError(`No Salesforce account with Usage_Account_Key__c = ${accountKey}`);
+  return {
+    name: r.Name,
+    owner: r.Owner?.Name ?? null,
+    plan: r.Plan__c,
+    committedSpend: r.Committed_Spend__c,
+    renewalDate: r.Renewal_Date__c,
+    description: r.Description,
+    contacts: (r.Contacts?.records ?? []).map((c) => ({ name: c.Name, title: c.Title, email: c.Email, primary: c.Primary_Contact__c })),
+    openOpportunities: (r.Opportunities?.records ?? []).map((o) => ({
+      name: o.Name,
+      stage: o.StageName,
+      amount: o.Amount,
+      closeDate: o.CloseDate,
+    })),
+  };
+}

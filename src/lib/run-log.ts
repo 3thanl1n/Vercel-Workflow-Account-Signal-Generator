@@ -12,7 +12,12 @@ export async function startRun(runId: string, day: string, trigger: "cron" | "ma
     on conflict (run_id) do nothing`;
 }
 
-export async function finishRun(runId: string, ranking: Ranking, alertsPosted: number) {
+export async function finishRun(
+  runId: string,
+  ranking: Ranking,
+  alertsPosted: number,
+  agent: { decided: number; failed: number } = { decided: 0, failed: 0 },
+) {
   const sql = getSql();
   await sql`
     update runs set
@@ -20,6 +25,8 @@ export async function finishRun(runId: string, ranking: Ranking, alertsPosted: n
       accounts_checked = ${ranking.checked},
       flagged = ${ranking.ranked.length},
       alerts_posted = ${alertsPosted},
+      accounts_decided = ${agent.decided},
+      accounts_failed = ${agent.failed},
       ranking = ${JSON.stringify({ ranked: ranking.ranked, watch: ranking.watch })}::jsonb
     where run_id = ${runId}`;
 }
@@ -37,9 +44,10 @@ export async function getRunSlackMessage(runId: string): Promise<{ channel: stri
   return row?.slack_ts ? { channel: row.slack_channel, ts: row.slack_ts } : null;
 }
 
-export async function saveRunSlackMessage(runId: string, message: { channel: string; ts: string }) {
+/** Keeps the exact digest text, since the bot can't read the channel back. */
+export async function saveRunSlackMessage(runId: string, message: { channel: string; ts: string }, text: string) {
   const sql = getSql();
-  await sql`update runs set slack_channel = ${message.channel}, slack_ts = ${message.ts} where run_id = ${runId}`;
+  await sql`update runs set slack_channel = ${message.channel}, slack_ts = ${message.ts}, digest = ${text} where run_id = ${runId}`;
 }
 
 /** Returns false if this day was already claimed by an earlier cron delivery. */
