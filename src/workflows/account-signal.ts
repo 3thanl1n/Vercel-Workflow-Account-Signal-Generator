@@ -11,6 +11,7 @@ import {
   saveAgentUsage,
   saveDecision,
   saveEmailDraft,
+  sumStepUsage,
 } from "@/lib/decisions";
 import { draftWithBaseten, draftWithClaude, type EmailDraft, type EmailDraftInput } from "@/lib/email-draft";
 import { CLAUDE_MODEL } from "@/lib/models";
@@ -67,7 +68,8 @@ async function investigate({ runId, day, account }: AccountSignalInput): Promise
   const agent = new WorkflowAgent({
     model: CLAUDE_MODEL,
     instructions: INSTRUCTIONS,
-    maxOutputTokens: 1024,
+    // 1,024 cut off a turn on 2026-09-29 (finishReason "length"), and a cut-off turn's tool calls never run.
+    maxOutputTokens: 4096,
     // Every turn must call a tool, so the agent can't end with prose; it finishes by calling
     // recordDecision, which the stop condition below watches for.
     toolChoice: "required",
@@ -107,13 +109,7 @@ async function investigate({ runId, day, account }: AccountSignalInput): Promise
   }
   const decision: Decision = DecisionSchema.parse(call.input);
 
-  const agentUsage: ModelUsage = {
-    model: CLAUDE_MODEL,
-    inputTokens: result.totalUsage.inputTokens ?? 0,
-    outputTokens: result.totalUsage.outputTokens ?? 0,
-    cacheReadTokens: result.totalUsage.inputTokenDetails?.cacheReadTokens ?? 0,
-    cacheWriteTokens: result.totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0,
-  };
+  const agentUsage = sumStepUsage(CLAUDE_MODEL, result.steps);
   await saveAgentUsageStep(day, accountKey, agentUsage);
 
   if (decision.play === "ignore") return { status: "decided", decision, email: null, agentUsage, emailUsage: null };

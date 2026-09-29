@@ -21,6 +21,30 @@ const UsageSchema = z.object({
 });
 export type ModelUsage = z.infer<typeof UsageSchema>;
 
+type StepUsage = {
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number };
+  };
+};
+
+/**
+ * Adds up the agent's model calls one by one. The agent's own total (`totalUsage`) keeps
+ * only input and output tokens and drops the cache split, which would price every cached
+ * token at the full input rate.
+ */
+export function sumStepUsage(model: string, steps: readonly StepUsage[]): ModelUsage {
+  const total = { model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  for (const { usage } of steps) {
+    total.inputTokens += usage?.inputTokens ?? 0;
+    total.outputTokens += usage?.outputTokens ?? 0;
+    total.cacheReadTokens += usage?.inputTokenDetails?.cacheReadTokens ?? 0;
+    total.cacheWriteTokens += usage?.inputTokenDetails?.cacheWriteTokens ?? 0;
+  }
+  return total;
+}
+
 /** What each child run sends back to the daily run. */
 export const AccountReportSchema = z.discriminatedUnion("status", [
   z.object({
