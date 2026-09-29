@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { collectTakes, DecisionSchema, decisionToken, sumStepUsage } from "./decisions";
+import { checkYearlyPace, collectTakes, DecisionSchema, decisionToken, paceFacts, sumStepUsage } from "./decisions";
 import { CLAUDE_OPUS, costUsd } from "./models";
 
 const DECISION = {
   play: "expand",
+  yearlyPaceUsd: 4_830_000,
   confidence: 0.8,
   why: ["Weekly spend up 62% ($57.2k to $92.9k)", "On pace for $4.83M/yr vs a $2.92M commit"],
   nextStep: "Propose a larger commit before the Feb 28 renewal.",
@@ -16,6 +17,34 @@ describe("decisions", () => {
     expect(DecisionSchema.safeParse({ ...DECISION, why: ["a", "b", "c", "d", "e"] }).success).toBe(false);
     expect(DecisionSchema.safeParse({ ...DECISION, confidence: 1.2 }).success).toBe(false);
     expect(DecisionSchema.safeParse({ ...DECISION, play: "upsell" }).success).toBe(false);
+    expect(DecisionSchema.safeParse({ ...DECISION, yearlyPaceUsd: -1 }).success).toBe(false);
+  });
+
+  it("computes this week x 52 and the 4-week average x 52", () => {
+    expect(paceFacts([10_000, 10_000, 10_000, 50_000])).toEqual({ thisWeekYearly: 2_600_000, fourWeekYearly: 1_040_000 });
+  });
+
+  describe("checking the agent's yearly figure against code's", () => {
+    // Quarrystone on 2026-09-29: $17.4k this week x 52 = $905k/yr; about $1.02M/yr on the 4-week average.
+    const quarrystone = { thisWeekYearly: 905_000, fourWeekYearly: 1_020_000 };
+
+    it("rejects a figure more than 3x from both, and the message gives code's figures", () => {
+      const message = checkYearlyPace(146_000, quarrystone);
+      expect(message).toContain("$146k");
+      expect(message).toContain("this week × 52 = $905k/yr");
+      expect(message).toContain("the 4-week average × 52 = $1.02M/yr");
+    });
+
+    it("accepts the correct figure", () => {
+      expect(checkYearlyPace(905_000, quarrystone)).toBeNull();
+    });
+
+    it("accepts an honest estimate after a one-off spike: half the 4-week figure", () => {
+      const spike = paceFacts([10_000, 10_000, 10_000, 50_000]); // $2.6M/yr this week, $1.04M/yr on average
+      expect(checkYearlyPace(520_000, spike)).toBeNull();
+      // More than 3x under this week x 52, so it passes on the 4-week figure alone.
+      expect(checkYearlyPace(520_000, { thisWeekYearly: spike.thisWeekYearly, fourWeekYearly: spike.thisWeekYearly })).not.toBeNull();
+    });
   });
 
   it("keys hook tokens by run so two runs on one day can't collide", () => {

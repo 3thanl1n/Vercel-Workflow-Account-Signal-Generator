@@ -8,6 +8,7 @@ function usage(key: string, now: number, before: number, errorRate = 0.005): Usa
     accountKey: key,
     thisWeek: { spend: now, requests: 10_000, errors: Math.round(10_000 * errorRate) },
     lastWeek: { spend: before, requests: 10_000, errors: 50 },
+    weeklySpend: [before, before, before, now],
     newModels: [],
   };
 }
@@ -87,7 +88,7 @@ describe("formatSummary with the agent's take", () => {
   const why = ["Weekly spend up 3x ($1.00k to $3.40k)", "No open opportunity"];
   const decided = (play: "expand" | "ignore", email: { subject: string; body: string; model: string } | null) => ({
     status: "decided" as const,
-    decision: { play, confidence: 0.8, why, nextStep: "Call them this week." },
+    decision: { play, yearlyPaceUsd: 170_000, confidence: 0.8, why, nextStep: "Call them this week." },
     email,
     agentUsage: { model: "anthropic/claude-opus-5.5", inputTokens: 1, outputTokens: 1 },
     emailUsage: null,
@@ -114,6 +115,12 @@ describe("formatSummary with the agent's take", () => {
       "> Usage tripled.",
     ]);
     expect(lines[start + 10]).toBe("      _Draft: GLM 5.3 Flash on Baseten_");
+  });
+
+  it("flags an agent play that overrides the rules' play, and only then", () => {
+    const lines = text.split("\n");
+    expect(lines).toContain("      *Agent:* Ignore · confidence 0.80 · overrides the rules' expand");
+    expect(lines.filter((l) => l.includes("overrides the rules'"))).toHaveLength(1);
   });
 
   it("says so when the agent ignores, has no draft, fails or times out", () => {

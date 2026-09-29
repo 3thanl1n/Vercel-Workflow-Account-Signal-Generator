@@ -72,6 +72,9 @@ async function investigateTopAccounts(runId: string, day: string, ranking: Ranki
               play: account.play,
               priority: account.priority,
               signals: account.signals.map((s) => s.detail),
+              plan: account.plan,
+              committedSpend: account.committedSpend,
+              weeklySpend: account.weeklySpend,
             },
           },
         ]);

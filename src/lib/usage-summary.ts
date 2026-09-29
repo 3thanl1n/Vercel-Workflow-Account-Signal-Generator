@@ -1,4 +1,4 @@
-import { addDays } from "@/lib/dates";
+import { addDays, daysBetween } from "@/lib/dates";
 
 // Turns raw daily rows into the per-account numbers the rules need. The
 // workflow step returns these summaries, never the raw rows, so step results stay small.
@@ -11,6 +11,8 @@ export type UsageSummary = {
   accountKey: string;
   thisWeek: WeekTotals;
   lastWeek: WeekTotals;
+  /** Spend in each of the last 4 weeks, oldest first; the last one is this week. */
+  weeklySpend: number[];
   /** Models used this week with no usage in the 21 days before this week. */
   newModels: { model: string; spendThisWeek: number }[];
 };
@@ -30,12 +32,13 @@ export function summarizeUsage(rows: UsageRowLike[], day: string): UsageSummary[
     let entry = byAccount.get(row.accountKey);
     if (!entry) {
       entry = {
-        summary: { accountKey: row.accountKey, thisWeek: emptyWeek(), lastWeek: emptyWeek(), newModels: [] },
+        summary: { accountKey: row.accountKey, thisWeek: emptyWeek(), lastWeek: emptyWeek(), weeklySpend: [0, 0, 0, 0], newModels: [] },
         thisWeekModels: new Map(),
         priorModels: new Set(),
       };
       byAccount.set(row.accountKey, entry);
     }
+    entry.summary.weeklySpend[3 - Math.floor(daysBetween(row.day, day) / 7)] += row.spendUsd;
 
     if (row.day >= thisWeekStart) {
       addTo(entry.summary.thisWeek, row);
@@ -50,9 +53,10 @@ export function summarizeUsage(rows: UsageRowLike[], day: string): UsageSummary[
     ...summary,
     thisWeek: roundWeek(summary.thisWeek),
     lastWeek: roundWeek(summary.lastWeek),
+    weeklySpend: summary.weeklySpend.map(cents),
     newModels: [...thisWeekModels]
       .filter(([model]) => !priorModels.has(model))
-      .map(([model, spend]) => ({ model, spendThisWeek: Math.round(spend * 100) / 100 })),
+      .map(([model, spend]) => ({ model, spendThisWeek: cents(spend) })),
   }));
 }
 
@@ -67,5 +71,9 @@ function addTo(week: WeekTotals, row: UsageRowLike) {
 }
 
 function roundWeek(week: WeekTotals): WeekTotals {
-  return { ...week, spend: Math.round(week.spend * 100) / 100 };
+  return { ...week, spend: cents(week.spend) };
+}
+
+function cents(amount: number): number {
+  return Math.round(amount * 100) / 100;
 }

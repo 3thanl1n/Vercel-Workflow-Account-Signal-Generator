@@ -36,6 +36,10 @@ export type RankedAccount = {
   renewalDate: string | null;
   hasOpenOpportunity: boolean;
   signals: Signal[];
+  /** Carried to the agent as facts it shouldn't recompute. */
+  plan: CrmAccount["plan"];
+  committedSpend: number | null;
+  weeklySpend: number[];
 };
 
 export type Ranking = {
@@ -158,6 +162,9 @@ export function rankAccounts(accounts: CrmAccount[], usage: UsageSummary[]): Ran
         renewalDate: crm.renewalDate,
         hasOpenOpportunity: crm.hasOpenOpportunity,
         signals,
+        plan: crm.plan,
+        committedSpend: crm.committedSpend,
+        weeklySpend: u.weeklySpend,
       });
     } else if (signals.length > 0) {
       watch.push({ accountKey: crm.accountKey, name: crm.name, signals });

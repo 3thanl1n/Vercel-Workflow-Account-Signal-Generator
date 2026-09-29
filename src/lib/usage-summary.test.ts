@@ -34,4 +34,25 @@ describe("summarizeUsage", () => {
       { model: "old", spendThisWeek: 20 },
     ]);
   });
+
+  it("adds up spend for each of the last 4 weeks, oldest first", () => {
+    const [summary] = summarizeUsage(
+      [
+        row("2026-09-26", "a", 100), // this week (today)
+        row("2026-09-20", "b", 50), // this week (6 days ago)
+        row("2026-09-19", "a", 40), // last week (7 days ago)
+        row("2026-09-12", "a", 30), // 2 weeks back (14 days ago)
+        row("2026-09-06", "a", 5), // 2 weeks back (20 days ago)
+        row("2026-09-05", "a", 20), // 3 weeks back (21 days ago)
+        row("2026-08-30", "a", 10), // 3 weeks back (27 days ago, the first day read)
+        row("2026-08-29", "a", 999), // outside the 28 days
+        row("2026-09-27", "a", 999), // after the run day
+      ],
+      DAY,
+    );
+
+    expect(summary.weeklySpend).toEqual([30, 35, 40, 150]);
+    // The last two weeks are the rules' last week and this week.
+    expect(summary.weeklySpend.slice(2)).toEqual([summary.lastWeek.spend, summary.thisWeek.spend]);
+  });
 });

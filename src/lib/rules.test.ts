@@ -8,6 +8,7 @@ function usage(overrides: Partial<{ now: number; before: number; nowRate: number
     accountKey: overrides.key ?? "acct_test",
     thisWeek: { spend: now, requests: 10_000, errors: Math.round(10_000 * nowRate) },
     lastWeek: { spend: before, requests: 10_000, errors: Math.round(10_000 * beforeRate) },
+    weeklySpend: [before, before, before, now],
     newModels: overrides.newModels ?? [],
   };
 }

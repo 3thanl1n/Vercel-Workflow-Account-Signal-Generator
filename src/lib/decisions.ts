@@ -2,15 +2,48 @@ import { defineHook } from "workflow";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import type { EmailDraft } from "@/lib/email-draft";
+import { money } from "@/lib/rules";
 
 /** What the agent records for one account. Validated before it's saved. */
 export const DecisionSchema = z.object({
   play: z.enum(["expand", "save", "new_use_case", "ignore"]),
+  yearlyPaceUsd: z
+    .number()
+    .nonnegative()
+    .describe("The account's total yearly spend at its current pace, across all models, in USD. Not the change and not the amount at stake."),
   confidence: z.number().min(0).max(1),
   why: z.array(z.string().min(1).max(300)).min(2).max(4),
   nextStep: z.string().min(1).max(400),
 });
 export type Decision = z.infer<typeof DecisionSchema>;
+
+/** The two yearly figures code computes from the last 4 weekly spends (oldest first). */
+export type PaceFacts = { thisWeekYearly: number; fourWeekYearly: number };
+
+export function paceFacts(weeklySpend: number[]): PaceFacts {
+  const thisWeek = weeklySpend.at(-1) ?? 0;
+  const average = weeklySpend.reduce((sum, week) => sum + week, 0) / Math.max(weeklySpend.length, 1);
+  return { thisWeekYearly: thisWeek * 52, fourWeekYearly: average * 52 };
+}
+
+/** How far the agent's yearly figure may sit from code's figures before the decision is rejected. */
+export const PACE_TOLERANCE = 3;
+
+/**
+ * Checks the agent's yearly figure against code's. It passes when it's within 3x of either
+ * figure: two figures, so an honest reading of a one-off spike (well under this week × 52)
+ * still passes. Returns the message sent back to the agent, or null when it passes.
+ */
+export function checkYearlyPace(yearlyPaceUsd: number, facts: PaceFacts): string | null {
+  const near = (figure: number) => yearlyPaceUsd >= figure / PACE_TOLERANCE && yearlyPaceUsd <= figure * PACE_TOLERANCE;
+  if (near(facts.thisWeekYearly) || near(facts.fourWeekYearly)) return null;
+  return (
+    `Rejected, nothing saved: yearlyPaceUsd ${money(yearlyPaceUsd).text} is more than ${PACE_TOLERANCE}x away from both figures code computed: ` +
+    `this week × 52 = ${money(facts.thisWeekYearly).text}/yr and the 4-week average × 52 = ${money(facts.fourWeekYearly).text}/yr. ` +
+    "yearlyPaceUsd is the account's total yearly spend at its current pace, across all models (not the change). " +
+    "Correct it and any why bullet built on it, then call recordDecision again."
+  );
+}
 
 const UsageSchema = z.object({
   model: z.string(),

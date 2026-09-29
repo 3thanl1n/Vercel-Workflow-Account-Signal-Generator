@@ -26,7 +26,7 @@ export function formatSummary(day: string, ranking: Ranking, takes?: Record<stri
   ranking.top.forEach((account, i) => {
     lines.push("", ...accountLines(account, i + 1));
     const take = takes?.[account.accountKey];
-    if (take) lines.push(...takeLines(take));
+    if (take) lines.push(...takeLines(take, account.play));
   });
 
   const rest = ranking.ranked.slice(ranking.top.length);
@@ -45,13 +45,14 @@ export function formatSummary(day: string, ranking: Ranking, takes?: Record<stri
 }
 
 /** The agent's take under an account's rule lines. The rule lines always stay. */
-function takeLines(take: AccountTake): string[] {
+function takeLines(take: AccountTake, rulesPlay: Play): string[] {
   if (take.status === "timed_out") return [`${INDENT}*Agent:* no answer within 30 minutes; the rule lines above still stand.`];
   if (take.status === "failed") return [`${INDENT}*Agent:* failed (${take.error.slice(0, 160)}); the rule lines above still stand.`];
 
   const { decision, email } = take;
+  const override = decision.play === rulesPlay ? "" : ` · overrides the rules' ${PLAY_LABELS[rulesPlay].toLowerCase()}`;
   const lines = [
-    `${INDENT}*Agent:* ${PLAY_LABELS[decision.play]} · confidence ${decision.confidence.toFixed(2)}`,
+    `${INDENT}*Agent:* ${PLAY_LABELS[decision.play]} · confidence ${decision.confidence.toFixed(2)}${override}`,
     ...decision.why.map((reason) => `${INDENT}   – ${reason}`),
     `${INDENT}   Next step: ${decision.nextStep}`,
   ];
